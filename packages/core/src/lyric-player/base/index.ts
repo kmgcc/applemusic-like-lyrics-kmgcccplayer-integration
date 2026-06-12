@@ -11,7 +11,11 @@ import { optimizeLyricLines } from "#utils/optimize-lyric.ts";
 import type { SpringParams } from "#utils/spring.ts";
 import { InterludeDots } from "../dom/interlude-dots.ts";
 import { BottomLineEl } from "./bottom-line.ts";
-import { LayoutAlignAnchor, MaskObsceneWordsMode } from "./consts.ts";
+import {
+	LayoutAlignAnchor,
+	MaskObsceneWordsMode,
+	type WordHighlightMode,
+} from "./consts.ts";
 import {
 	computeLineBlur,
 	computeLinePresentation,
@@ -178,6 +182,7 @@ export abstract class LyricPlayerBase
 		}
 	}) as ResizeObserverCallback);
 	protected wordFadeWidth = 0.5;
+	protected wordHighlightMode: WordHighlightMode = "smooth";
 
 	constructor(element?: HTMLElement) {
 		super();
@@ -231,6 +236,10 @@ export abstract class LyricPlayerBase
 		this.wordFadeWidth = Math.max(0.0001, value);
 	}
 
+	setWordHighlightMode(mode: WordHighlightMode = "smooth"): void {
+		this.wordHighlightMode = mode === "discrete" ? "discrete" : "smooth";
+	}
+
 	/**
 	 * 是否启用歌词行缩放效果，默认启用
 	 *
@@ -257,6 +266,10 @@ export abstract class LyricPlayerBase
 	 */
 	getWordFadeWidth(): number {
 		return this.wordFadeWidth;
+	}
+
+	getWordHighlightMode(): WordHighlightMode {
+		return this.wordHighlightMode;
 	}
 
 	setIsSeeking(isSeeking: boolean): void {
@@ -505,7 +518,7 @@ export abstract class LyricPlayerBase
 		});
 
 		for (const id of commitResult.linesToDisable)
-			this.currentLyricLineObjects[id]?.disable();
+			this.currentLyricLineObjects[id]?.disable(isSeek);
 
 		for (const id of commitResult.linesToEnable)
 			this.currentLyricLineObjects[id]?.enable();

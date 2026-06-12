@@ -15,6 +15,8 @@ interface RealWord extends LyricWord {
 	subElements: HTMLSpanElement[];
 	elementAnimations: Animation[];
 	maskAnimations: Animation[];
+	highlightStartTime?: number;
+	highlightEndTime?: number;
 	width: number;
 	height: number;
 	padding: number;
@@ -22,6 +24,10 @@ interface RealWord extends LyricWord {
 }
 
 const ANIMATION_FRAME_QUANTITY = 32;
+const DISCRETE_OPACITY_FRAME_QUANTITY = 18;
+const DISCRETE_LOG_EASING_STRENGTH = 2.2;
+const DISCRETE_MIN_FADE_DURATION_MS = 300;
+const DISCRETE_MAX_FADE_DURATION_MS = 2000;
 
 const norNum = (min: number, max: number) => (x: number) =>
 	clamp01((x - min) / (max - min));
@@ -31,6 +37,9 @@ const endNum = norNum(EMP_EASING_MID, 1);
 
 const bezIn = bezier(0.2, 0.4, 0.58, 1.0);
 const bezOut = bezier(0.3, 0.0, 0.58, 1.0);
+const EXIT_HIGHLIGHT_MIN_REMAINING_MS = 16;
+const EXIT_HIGHLIGHT_MIN_CATCH_UP_MS = 120;
+const EXIT_HIGHLIGHT_MAX_CATCH_UP_MS = 280;
 
 const makeEmpEasing = (mid: number) => {
 	return (x: number) => (x < mid ? bezIn(beginNum(x)) : 1 - bezOut(endNum(x)));
@@ -89,6 +98,7 @@ export class LyricLineEl extends LyricLineBase {
 
 	private targetBrightAlpha = 1.0;
 	private targetDarkAlpha = 0.2;
+	private exitCatchUpGeneration = 0;
 
 	/**
 	 * 用于平衡换行、尽量减少各行长度差异的类
@@ -132,6 +142,14 @@ export class LyricLineEl extends LyricLineBase {
 		}
 		// 延迟构建具体行内容，进入可视区（含 overscan）时再构建
 		this.rebuildStyle();
+	}
+
+	private isFullscreenSurface(): boolean {
+		const playerElement = this.lyricPlayer?.getElement?.();
+		return !!(
+			playerElement?.classList?.contains?.("amll-surface-fullscreen") ||
+			playerElement?.classList?.contains?.("amll-surface-fullscreen-cover-blur")
+		);
 	}
 	private listenersMap = new Map<string, Set<MouseEventListener>>();
 	private readonly onMouseEvent = (e: MouseEvent) => {
@@ -198,6 +216,7 @@ export class LyricLineEl extends LyricLineBase {
 		maskAnimationTime: number = this.lyricPlayer.getCurrentTime(),
 		shouldPlay: boolean = this.lyricPlayer.getIsPlaying(),
 	): Promise<void> {
+		this.clearExitHighlightCatchUpState();
 		this.isEnabled = true;
 		this.element.classList.add(styles.active);
 		const main = this.element.children[0] as HTMLDivElement;
@@ -221,7 +240,11 @@ export class LyricLineEl extends LyricLineBase {
 			}
 
 			for (const a of word.maskAnimations) {
-				const t = Math.min(this.totalDuration, relativeTime);
+				const maxMaskTime =
+					this.lyricPlayer.getWordHighlightMode() === "discrete"
+						? Math.max(this.totalDuration, this.getAnimationEndTime(a))
+						: this.totalDuration;
+				const t = Math.min(maxMaskTime, relativeTime);
 				a.currentTime = t;
 				a.playbackRate = 1;
 
@@ -237,12 +260,95 @@ export class LyricLineEl extends LyricLineBase {
 		main.classList.add(styles.active);
 	}
 
-	disable(): void {
+	private getAnimationEndTime(animation: Animation): number {
+		const timing = animation.effect?.getComputedTiming();
+		const endTime = Number(timing?.endTime ?? 0);
+		if (Number.isFinite(endTime) && endTime > 0) return endTime;
+
+		const duration = Number(timing?.duration ?? 0);
+		const delay = Number(timing?.delay ?? 0);
+		const iterations = Number(timing?.iterations ?? 1);
+		const activeDuration = Number.isFinite(iterations)
+			? duration * iterations
+			: duration;
+		const fallbackEndTime = delay + activeDuration;
+		return Number.isFinite(fallbackEndTime) && fallbackEndTime > 0
+			? fallbackEndTime
+			: 0;
+	}
+
+	private clearExitHighlightCatchUpState(): void {
+		this.exitCatchUpGeneration++;
+		delete this.element.dataset.amllExitCatchUp;
+	}
+
+	private startExitHighlightCatchUp(isSeek = false): boolean {
+		if (isSeek) return false;
+		if (!(this.lyricPlayer.getIsPlaying?.() ?? true)) return false;
+
+		let maxRemaining = 0;
+		const catchUpAnimations: Animation[] = [];
+		for (const word of this.splittedWords) {
+			for (const animation of word.maskAnimations) {
+				const endTime = this.getAnimationEndTime(animation);
+				if (!(endTime > 0)) continue;
+
+				const currentTime =
+					typeof animation.currentTime === "number" ? animation.currentTime : 0;
+				const remaining = endTime - clamp(currentTime, 0, endTime);
+				maxRemaining = Math.max(maxRemaining, remaining);
+				if (remaining > EXIT_HIGHLIGHT_MIN_REMAINING_MS) {
+					catchUpAnimations.push(animation);
+				}
+			}
+		}
+
+		if (
+			maxRemaining <= EXIT_HIGHLIGHT_MIN_REMAINING_MS ||
+			catchUpAnimations.length === 0
+		) {
+			return false;
+		}
+
+		const catchUpDuration = clamp(
+			maxRemaining,
+			EXIT_HIGHLIGHT_MIN_CATCH_UP_MS,
+			EXIT_HIGHLIGHT_MAX_CATCH_UP_MS,
+		);
+		const playbackRate = Math.max(1, maxRemaining / catchUpDuration);
+		const generation = ++this.exitCatchUpGeneration;
+		this.element.dataset.amllExitCatchUp = "1";
+
+		for (const animation of catchUpAnimations) {
+			const endTime = this.getAnimationEndTime(animation);
+			const currentTime =
+				typeof animation.currentTime === "number" ? animation.currentTime : 0;
+
+			animation.currentTime = clamp(currentTime, 0, endTime);
+			animation.playbackRate = playbackRate;
+			animation.play();
+		}
+
+		Promise.allSettled(catchUpAnimations.map((animation) => animation.finished))
+			.then(() => {
+				if (this.exitCatchUpGeneration === generation) {
+					this.clearExitHighlightCatchUpState();
+					this.fadeDiscreteWordOpacityToInactive(true);
+				}
+			});
+
+		return true;
+	}
+
+	disable(isSeek = false): void {
 		this.isEnabled = false;
 		this.element.classList.remove(styles.active);
-		this.renderMode = LyricLineRenderMode.SOLID;
 
 		const main = this.element.children[0] as HTMLDivElement;
+		const keepHighlightDuringExit = this.startExitHighlightCatchUp(isSeek);
+		if (!keepHighlightDuringExit) {
+			this.renderMode = LyricLineRenderMode.SOLID;
+		}
 
 		for (const word of this.splittedWords) {
 			for (const a of word.elementAnimations) {
@@ -256,8 +362,13 @@ export class LyricLineEl extends LyricLineBase {
 			}
 
 			for (const a of word.maskAnimations) {
-				a.pause();
+				if (!keepHighlightDuringExit) {
+					a.pause();
+				}
 			}
+		}
+		if (!keepHighlightDuringExit) {
+			this.fadeDiscreteWordOpacityToInactive(!isSeek);
 		}
 		main.classList.remove(styles.active);
 	}
@@ -307,23 +418,35 @@ export class LyricLineEl extends LyricLineBase {
 	}
 
 	async pause(): Promise<void> {
-		if (!this.isEnabled) return;
 		for (const word of this.splittedWords) {
-			for (const a of word.elementAnimations) {
+			for (const a of word.maskAnimations) {
 				a.pause();
 			}
-			for (const a of word.maskAnimations) {
+		}
+		if (!this.isEnabled) {
+			this.clearExitHighlightCatchUpState();
+			this.renderMode = LyricLineRenderMode.SOLID;
+			return;
+		}
+		for (const word of this.splittedWords) {
+			for (const a of word.elementAnimations) {
 				a.pause();
 			}
 		}
 	}
 	setMaskAnimationState(maskAnimationTime = 0): void {
 		const t = maskAnimationTime - this.lyricLine.startTime;
+		const isDiscrete = this.lyricPlayer.getWordHighlightMode() === "discrete";
 		for (const word of this.splittedWords) {
 			for (const a of word.maskAnimations) {
-				a.currentTime = clamp(t, 0, this.totalDuration);
+				const animationEndTime = this.getAnimationEndTime(a);
+				const maxMaskTime = isDiscrete
+					? Math.max(this.totalDuration, animationEndTime)
+					: this.totalDuration;
+				a.currentTime = clamp(t, 0, maxMaskTime);
 				a.playbackRate = 1;
-				if (t >= 0 && t < this.totalDuration) a.play();
+				if (t >= 0 && t < (isDiscrete ? animationEndTime : this.totalDuration))
+					a.play();
 				else a.pause();
 			}
 		}
@@ -551,6 +674,9 @@ export class LyricLineEl extends LyricLineBase {
 
 		const wrapperWordEl = document.createElement("span");
 		wrapperWordEl.classList.add(styles.emphasizeWrapper);
+		const shouldGroupDiscreteHighlight =
+			this.lyricPlayer.getWordHighlightMode() !== "discrete" ||
+			!isCJK(merged.word);
 
 		const characterElements: HTMLElement[] = [];
 
@@ -561,6 +687,12 @@ export class LyricLineEl extends LyricLineBase {
 			}
 
 			const realWord = this.createWord(word, emp, hasRubyLine, hasRomanLine);
+			realWord.highlightStartTime = shouldGroupDiscreteHighlight
+				? merged.startTime
+				: word.startTime;
+			realWord.highlightEndTime = shouldGroupDiscreteHighlight
+				? merged.endTime
+				: word.endTime;
 
 			if (emp) {
 				characterElements.push(...realWord.subElements);
@@ -738,6 +870,106 @@ export class LyricLineEl extends LyricLineBase {
 		return this.lyricLine.endTime - this.lyricLine.startTime;
 	}
 
+	private getDiscreteInactiveOpacity(): number {
+		if (this.lyricLine.isBG) return 0.4;
+		return this.isFullscreenSurface() ? 0 : 0.28;
+	}
+
+	private getDiscreteHighlightStartTime(word: RealWord): number {
+		return Number.isFinite(word.highlightStartTime)
+			? (word.highlightStartTime as number)
+			: word.startTime;
+	}
+
+	private getDiscreteHighlightEndTime(word: RealWord): number {
+		return Number.isFinite(word.highlightEndTime)
+			? (word.highlightEndTime as number)
+			: word.endTime;
+	}
+
+	private getDiscreteFadeDuration(word: RealWord): number {
+		const wordDuration = Math.max(
+			0,
+			this.getDiscreteHighlightEndTime(word) -
+				this.getDiscreteHighlightStartTime(word),
+		);
+		if (wordDuration <= 0) return DISCRETE_MIN_FADE_DURATION_MS;
+		return clamp(
+			wordDuration,
+			DISCRETE_MIN_FADE_DURATION_MS,
+			DISCRETE_MAX_FADE_DURATION_MS,
+		);
+	}
+
+	private createDiscreteOpacityFrames(inactiveOpacity: number): Keyframe[] {
+		const frames: Keyframe[] = [{ offset: 0, opacity: inactiveOpacity }];
+		for (let i = 1; i <= DISCRETE_OPACITY_FRAME_QUANTITY; i++) {
+			const x = i / DISCRETE_OPACITY_FRAME_QUANTITY;
+			const eased =
+				Math.log1p(x * DISCRETE_LOG_EASING_STRENGTH) /
+				Math.log1p(DISCRETE_LOG_EASING_STRENGTH);
+			frames.push({
+				offset: x,
+				opacity: inactiveOpacity + (1 - inactiveOpacity) * eased,
+			});
+		}
+		return frames;
+	}
+
+	private getCurrentWordOpacity(wordEl: HTMLElement): number {
+		const opacity = Number.parseFloat(getComputedStyle(wordEl).opacity);
+		return Number.isFinite(opacity) ? clamp(opacity, 0, 1) : 1;
+	}
+
+	private fadeDiscreteWordOpacityToInactive(animated = true): void {
+		if (this.lyricPlayer.getWordHighlightMode() !== "discrete") return;
+		const inactiveOpacity = this.getDiscreteInactiveOpacity();
+		const duration = animated ? 300 : 0;
+
+		for (const word of this.splittedWords) {
+			const wordEl = word.mainElement;
+			if (!(wordEl instanceof HTMLElement)) continue;
+
+			const currentOpacity = this.getCurrentWordOpacity(wordEl);
+			for (const animation of word.maskAnimations) {
+				animation.cancel();
+			}
+			wordEl.style.opacity = `${currentOpacity}`;
+			wordEl.style.removeProperty("transition");
+
+			if (duration <= 0) {
+				wordEl.style.opacity = `${inactiveOpacity}`;
+				continue;
+			}
+
+			requestAnimationFrame(() => {
+				if (this.isEnabled || this.lyricPlayer.getWordHighlightMode() !== "discrete") {
+					return;
+				}
+				wordEl.style.transition = `opacity ${duration}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
+				wordEl.style.opacity = `${inactiveOpacity}`;
+				window.setTimeout(() => {
+					if (!this.isEnabled) {
+						wordEl.style.removeProperty("transition");
+					}
+				}, duration + 34);
+			});
+		}
+	}
+
+	private clearWordMaskStyles(wordEl: HTMLElement): void {
+		wordEl.style.removeProperty("mask-image");
+		wordEl.style.removeProperty("mask-repeat");
+		wordEl.style.removeProperty("mask-origin");
+		wordEl.style.removeProperty("mask-size");
+		wordEl.style.removeProperty("mask-position");
+		wordEl.style.removeProperty("-webkit-mask-image");
+		wordEl.style.removeProperty("-webkit-mask-repeat");
+		wordEl.style.removeProperty("-webkit-mask-origin");
+		wordEl.style.removeProperty("-webkit-mask-size");
+		wordEl.style.removeProperty("-webkit-mask-position");
+	}
+
 	override onLineSizeChange(_size: [number, number]): void {
 		this.updateMaskImageSync();
 	}
@@ -761,7 +993,13 @@ export class LyricLineEl extends LyricLineBase {
 				LyricLineBase.wordSegmenter,
 			);
 		}
-		if (this.lyricPlayer.supportMaskImage) {
+		if (this.lyricPlayer.getWordHighlightMode() === "discrete") {
+			if (this.lyricPlayer.supportMaskImage) {
+				this.generateWebAnimationBasedDiscreteWordHighlight();
+			} else {
+				this.generateCalcBasedDiscreteWordHighlight();
+			}
+		} else if (this.lyricPlayer.supportMaskImage) {
 			this.generateWebAnimationBasedMaskImage();
 		} else {
 			this.generateCalcBasedMaskImage();
@@ -776,6 +1014,7 @@ export class LyricLineEl extends LyricLineBase {
 		for (const word of this.splittedWords) {
 			const wordEl = word.mainElement;
 			if (wordEl) {
+				wordEl.style.removeProperty("opacity");
 				word.width = wordEl.clientWidth;
 				word.height = wordEl.clientHeight;
 				const fadeWidth = word.height * this.lyricPlayer.getWordFadeWidth();
@@ -806,6 +1045,23 @@ export class LyricLineEl extends LyricLineBase {
 		}
 	}
 
+	private generateCalcBasedDiscreteWordHighlight(): void {
+		const inactiveOpacity = this.getDiscreteInactiveOpacity();
+		for (const word of this.splittedWords) {
+			const wordEl = word.mainElement;
+			if (!wordEl) continue;
+			for (const a of word.maskAnimations) {
+				a.cancel();
+			}
+			word.maskAnimations = [];
+			this.clearWordMaskStyles(wordEl);
+
+			const fadeDuration = this.getDiscreteFadeDuration(word);
+			const opacitySlope = (1 - inactiveOpacity) / fadeDuration;
+			wordEl.style.opacity = `clamp(${inactiveOpacity}, calc(${inactiveOpacity} + (var(--amll-player-time) - ${this.getDiscreteHighlightStartTime(word)}) * ${opacitySlope}), 1)`;
+		}
+	}
+
 	private generateWebAnimationBasedMaskImage() {
 		// 因为歌词行有可能比行内单词的结束时间早，有可能导致过渡动画提早停止出现瑕疵
 		// 所以要以单词的结束时间为准
@@ -818,6 +1074,7 @@ export class LyricLineEl extends LyricLineBase {
 		this.splittedWords.forEach((word, i) => {
 			const wordEl = word.mainElement;
 			if (wordEl) {
+				wordEl.style.removeProperty("opacity");
 				const fadeWidth = word.height * this.lyricPlayer.getWordFadeWidth();
 				const [maskImage, totalAspect] = generateFadeGradient(
 					fadeWidth / (word.width + word.padding * 2),
@@ -995,6 +1252,45 @@ export class LyricLineEl extends LyricLineBase {
 				} catch (err) {
 					console.warn("应用渐变动画发生错误", frames, totalFadeDuration, err);
 				}
+			}
+		});
+	}
+
+	private generateWebAnimationBasedDiscreteWordHighlight(): void {
+		const inactiveOpacity = this.getDiscreteInactiveOpacity();
+
+		this.splittedWords.forEach((word, i) => {
+			const wordEl = word.mainElement;
+			if (!wordEl) return;
+			for (const a of word.maskAnimations) {
+				a.cancel();
+			}
+			this.clearWordMaskStyles(wordEl);
+
+			const delay = Math.max(
+				0,
+				this.getDiscreteHighlightStartTime(word) - this.lyricLine.startTime,
+			);
+			const duration = Math.max(1, this.getDiscreteFadeDuration(word));
+			const frames = this.createDiscreteOpacityFrames(inactiveOpacity);
+
+			try {
+				const ani = wordEl.animate(frames, {
+					duration,
+					delay,
+					id: `discrete-word-${word.word}-${i}`,
+					fill: "both",
+				});
+				ani.pause();
+				word.maskAnimations = [ani];
+			} catch (err) {
+				console.warn(
+					"应用离散逐词高亮动画发生错误",
+					frames,
+					duration,
+					delay,
+					err,
+				);
 			}
 		});
 	}

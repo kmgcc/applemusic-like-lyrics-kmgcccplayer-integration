@@ -28,6 +28,17 @@ export const LyricLineRenderMode = {
  */
 export type LyricLineRenderMode = ValueOf<typeof LyricLineRenderMode>;
 
+/** 逐词高亮模式 */
+export const WordHighlightMode = {
+	/** 官方连续扫光高亮 */
+	Smooth: "smooth",
+	/** App 减弱高亮：按字/词整体 opacity 淡入 */
+	Discrete: "discrete",
+} as const;
+
+/** 逐词高亮模式枚举类型，见 {@link WordHighlightMode} */
+export type WordHighlightMode = ValueOf<typeof WordHighlightMode>;
+
 /** 布局对齐锚点 */
 export const LayoutAlignAnchor = {
 	Top: "top",

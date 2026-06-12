@@ -42,7 +42,7 @@ export abstract class LyricLineBase extends EventTarget implements Disposable {
 
 	abstract getLine(): LyricLine;
 	abstract enable(time?: number, shouldPlay?: boolean): void;
-	abstract disable(): void;
+	abstract disable(isSeek?: boolean): void;
 	abstract resume(): void;
 	abstract pause(): void;
 	onLineSizeChange(_size: [number, number]): void {}

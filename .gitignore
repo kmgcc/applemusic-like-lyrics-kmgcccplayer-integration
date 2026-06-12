@@ -20,4 +20,5 @@ target/
 *.tsbuildinfo
 .million/
 **/dist
+**/dist-myplayer
 .playwright*/
