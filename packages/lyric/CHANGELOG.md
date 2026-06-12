@@ -1,3 +1,23 @@
+## 1.0.1 (2026-05-17)
+
+### Patch Changes
+
+- **fix:** 更正 stringifyLrcA2 函数大小写错误 ([#535](https://github.com/amll-dev/applemusic-like-lyrics/pull/535))
+
+  将 `stringifylrcA2` 更正为 `stringifyLrcA2`。我们保留了兼容旧版本拼写的接口，但其将在未来版本中移除。
+
+- **chore:** 更正 package.json 协议声明 ([#534](https://github.com/amll-dev/applemusic-like-lyrics/pull/534))
+
+  仓库根目录的 LICENSE 文件为 AGPL v3.0 协议，但是 package.json 中的 `license` 字段为 `GPL-3.0`。经与原开发者确认，package.json 中的 `license` 字段有误。仓库与其所有产出的 npm 包均应为 AGPL v3 only 协议，SPDX: `AGPL-3.0-only`。因此，更正各包 `package.json` 的 `license` 字段为 `AGPL-3.0-only`。
+
+### Updated Dependencies
+
+- Updated `@applemusic-like-lyrics/ttml` to `1.0.1`
+
+### Contributors
+
+- Linho [@Linho1219](https://github.com/Linho1219)
+
 # 1.0.0 (2026-04-23)
 
 ### Updated Dependencies

@@ -8,20 +8,15 @@ const docsSidebar = [
 	{
 		label: "概览",
 		translations: { en: "Overview" },
-		items: [
-			{ slug: "guides/overview/intro" },
-			{ slug: "guides/overview/quickstart" },
-			{ slug: "guides/overview/eco" },
-		],
+		items: [{ slug: "guides/overview/intro" }, { slug: "guides/overview/eco" }],
 	},
 	{
-		label: "React 绑定",
-		translations: { en: "React Bindings" },
+		label: "歌词组件",
+		translations: { en: "Lyric Component" },
 		items: [
-			{ slug: "guides/react/introduction" },
-			{ slug: "guides/react/quick-start" },
-			{ slug: "guides/react/lyric-player" },
-			{ slug: "guides/react/bg-render" },
+			{ slug: "guides/component/quickstart" },
+			{ slug: "guides/component/sequence" },
+			{ slug: "guides/component/background" },
 		],
 	},
 	{
@@ -109,8 +104,21 @@ export default defineConfig({
 		react(),
 		starlight({
 			favicon: "favicon.ico",
-			title: "AppleMusic-like Lyrics",
-			customCss: ["./src/styles/custom.css"],
+			title: "AMLL Docs",
+			logo: {
+				src: "./src/assets/amll-logo.svg",
+				alt: "AMLL",
+			},
+			customCss: [
+				"./src/styles/consts.css",
+				"./src/styles/frame.css",
+				"./src/styles/content.css",
+			],
+			expressiveCode: {
+				themes: ["github-dark", "github-light"],
+				useStarlightDarkModeSwitch: true,
+				useStarlightUiThemeColors: false,
+			},
 			locales: {
 				root: { label: "简体中文", lang: "zh-CN" },
 				en: { label: "English", lang: "en" },
@@ -164,6 +172,10 @@ export default defineConfig({
 					},
 				},
 			],
+			editLink: {
+				baseUrl:
+					"https://github.com/amll-dev/applemusic-like-lyrics/blob/main/packages/docs/",
+			},
 		}),
 	],
 });

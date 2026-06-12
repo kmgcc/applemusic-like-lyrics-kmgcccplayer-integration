@@ -1,3 +1,19 @@
+## 0.5.1 (2026-05-17)
+
+### Patch Changes
+
+- **fix:** 修复含对唱时歌词错误提前导致的多行高亮 ([#521](https://github.com/amll-dev/applemusic-like-lyrics/pull/521))
+- **refactor:** 引入歌词组来包装主歌词和背景人声 & 前置背景人声 ([#531](https://github.com/amll-dev/applemusic-like-lyrics/pull/531))
+- **chore:** 更正 package.json 协议声明 ([#534](https://github.com/amll-dev/applemusic-like-lyrics/pull/534))
+
+  仓库根目录的 LICENSE 文件为 AGPL v3.0 协议，但是 package.json 中的 `license` 字段为 `GPL-3.0`。经与原开发者确认，package.json 中的 `license` 字段有误。仓库与其所有产出的 npm 包均应为 AGPL v3 only 协议，SPDX: `AGPL-3.0-only`。因此，更正各包 `package.json` 的 `license` 字段为 `AGPL-3.0-only`。
+- **chore(core):** 优化类型定义 ([#519](https://github.com/amll-dev/applemusic-like-lyrics/pull/519))
+
+### Contributors
+
+- apoint123 [@apoint123](https://github.com/apoint123)
+- Linho [@Linho1219](https://github.com/Linho1219)
+
 ## 0.5.0 (2026-05-12)
 
 ### Minor Changes

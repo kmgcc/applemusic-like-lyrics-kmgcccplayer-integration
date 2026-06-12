@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import pluginBabel from "@rolldown/plugin-babel";
 import { transform } from "@svgr/core";
+import jotaiDebugLabelPlugin from "jotai-babel/plugin-debug-label";
+import jotaiReactRefreshPlugin from "jotai-babel/plugin-react-refresh";
 import { defineConfig } from "tsdown";
 import { baseConfig } from "../../tsdown.base.ts";
 
@@ -59,8 +61,8 @@ export default defineConfig({
 		pluginBabel({
 			plugins: [
 				["babel-plugin-react-compiler", { target: "19" }],
-				"jotai-babel/plugin-debug-label",
-				"jotai-babel/plugin-react-refresh",
+				jotaiDebugLabelPlugin,
+				jotaiReactRefreshPlugin,
 			],
 		}),
 	],

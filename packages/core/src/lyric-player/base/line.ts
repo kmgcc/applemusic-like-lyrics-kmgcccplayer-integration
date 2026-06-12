@@ -45,9 +45,9 @@ export abstract class LyricLineBase extends EventTarget implements Disposable {
 	abstract disable(isSeek?: boolean): void;
 	abstract resume(): void;
 	abstract pause(): void;
-	onLineSizeChange(_size: [number, number]): void {}
+	abstract onLineSizeChange(size: [number, number]): void;
+
 	setTransform(
-		top: number = this.top,
 		scale: number = this.scale,
 		opacity: number = this.opacity,
 		blur: number = this.blur,
@@ -55,7 +55,6 @@ export abstract class LyricLineBase extends EventTarget implements Disposable {
 		delay = 0,
 		_mode: LyricLineRenderMode = LyricLineRenderMode.SOLID,
 	): void {
-		this.top = top;
 		this.scale = scale;
 		this.opacity = opacity;
 		this.blur = blur;

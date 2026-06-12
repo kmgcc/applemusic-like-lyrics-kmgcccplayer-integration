@@ -1,13 +1,13 @@
 {
 	"name": "@applemusic-like-lyrics/react-full",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"description": "AMLL 组件库的 React 绑定，但是更加完备且高度灵活",
 	"repository": {
 		"url": "https://github.com/amll-dev/applemusic-like-lyrics.git",
 		"directory": "packages/react-full",
 		"type": "git"
 	},
-	"license": "GPL-3.0",
+	"license": "AGPL-3.0-only",
 	"nx": {
 		"tags": [
 			"library"
@@ -70,6 +70,7 @@
 		"react-dom": "^19"
 	},
 	"devDependencies": {
+		"@babel/core": "catalog:",
 		"@biomejs/biome": "catalog:",
 		"@rolldown/plugin-babel": "catalog:",
 		"@svgr/core": "^8.1.0",
