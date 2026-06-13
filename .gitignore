@@ -21,4 +21,5 @@ target/
 .million/
 **/dist
 **/dist-myplayer
+**/dist-myplayer-background
 .playwright*/
